@@ -49,6 +49,20 @@ class ScheduleService:
         self._running.clear()
         logger.info("Schedule service stopped.")
 
+    @property
+    def job_count(self) -> int:
+        """Number of scheduled jobs currently registered (read-only inspection)."""
+        return len(self._scheduler.jobs)
+
+    def replace_brightness_callback(self, callback: Callable[[int, str], None]) -> None:
+        """Swap the brightness-change callback.
+
+        Primarily a testing seam: lets a test substitute a failing or recording
+        callback without touching the private ``_on_brightness_change`` attribute.
+        Production code should set the callback once via the constructor.
+        """
+        self._on_brightness_change = callback
+
     def apply_schedule(self, config: BrightnessScheduleConfig) -> str:
         """Validate *config*, register daily jobs, and immediately apply the correct period.
 

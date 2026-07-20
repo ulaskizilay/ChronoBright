@@ -42,6 +42,8 @@ python -m chronobright
 
 On startup, ChronoBright reads the saved configuration (if any), immediately sets brightness to whichever period — morning or evening — is currently active, and registers two daily jobs with the scheduler. A daemon thread ticks the scheduler every second in the background, so you never have to think about it.
 
+> **Multi-display note:** when a scheduled period applies, all detected displays are set to the same level. On exit, each display is restored to its own startup level. Per-display schedules are not yet exposed in the UI; the underlying `BrightnessService.set_brightness(level, display=...)` API supports it for future use.
+
 Closing the window sends the application to the system tray rather than quitting. From there you can show the window again or exit fully. On exit, the display is restored to the brightness it had when the application first launched.
 
 ## Configuration
