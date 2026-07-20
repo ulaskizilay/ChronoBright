@@ -16,7 +16,7 @@ from chronobright.ui.theme import apply_theme
 logger = get_logger(__name__)
 
 
-class ChronoBrightApp(ctk.CTk):
+class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
     """Top-level application window.
 
     Wires up the service layer and builds the UI on initialisation.

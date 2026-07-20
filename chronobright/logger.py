@@ -9,23 +9,10 @@ All modules should obtain their logger via:
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import sys
-from pathlib import Path
 
-
-def _resolve_log_path() -> Path:
-    """Return the platform-appropriate log file path."""
-    import platform
-
-    if platform.system() == "Windows":
-        import os
-        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-    else:
-        base = Path.home() / ".local" / "share"
-
-    log_dir = base / "ChronoBright" / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    return log_dir / "chronobright.log"
+from chronobright import config
 
 
 def _configure_root_logger() -> None:
@@ -49,8 +36,13 @@ def _configure_root_logger() -> None:
 
     # File handler — DEBUG and above (rotated manually; keep simple for v1)
     try:
-        log_path = _resolve_log_path()
-        file_handler = logging.FileHandler(log_path, encoding="utf-8")
+        config.LOG_DIR.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.handlers.RotatingFileHandler(
+            config.LOG_PATH,
+            maxBytes=2 * 1024 * 1024,
+            backupCount=3,
+            encoding="utf-8",
+        )
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(fmt)
         root.addHandler(file_handler)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import screen_brightness_control as sbc
 
+from chronobright.config import validate_brightness_level
 from chronobright.logger import get_logger
 
 logger = get_logger(__name__)
@@ -32,8 +33,10 @@ class BrightnessService:
         """Set display brightness to *level* percent (0–100).
 
         Raises:
+            ValueError: If *level* is not a valid brightness percentage.
             RuntimeError: If the underlying brightness API call fails.
         """
+        validate_brightness_level(level)
         try:
             sbc.set_brightness(level)
             logger.debug("Brightness set to %d%%.", level)

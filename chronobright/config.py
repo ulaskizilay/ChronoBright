@@ -1,10 +1,10 @@
-"""Application-wide constants and default configuration values."""
+"""Application-wide constants, platform-aware paths, and shared validators."""
 
 from __future__ import annotations
 
+import os
 import platform
 from pathlib import Path
-
 
 APP_NAME = "ChronoBright"
 APP_TITLE = "ChronoBright"
@@ -19,20 +19,28 @@ DEFAULT_MORNING_BRIGHTNESS = 90
 DEFAULT_EVENING_BRIGHTNESS = 80
 
 
-def _resolve_config_dir() -> Path:
-    """Return the platform-appropriate directory for user configuration."""
-    system = platform.system()
-
-    if system == "Windows":
-        import os
+def _resolve_base_dir() -> Path:
+    """Return the platform-appropriate base directory for user data."""
+    if platform.system() == "Windows":
         appdata = os.environ.get("APPDATA")
-        base = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
-        return base / APP_NAME
+        return Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
 
     # macOS and Linux
-    xdg_config = Path.home() / ".config"
-    return xdg_config / APP_NAME.lower()
+    return Path.home() / ".config"
 
 
-CONFIG_DIR: Path = _resolve_config_dir()
+CONFIG_DIR: Path = _resolve_base_dir() / APP_NAME
+LOG_DIR: Path = CONFIG_DIR / "logs"
 USER_CONFIG_PATH: Path = CONFIG_DIR / "config.json"
+LOG_PATH: Path = LOG_DIR / "chronobright.log"
+
+
+def validate_brightness_level(level: object) -> None:
+    """Reject levels that aren't plain integers in the 0–100 percent range.
+
+    Booleans are explicitly rejected even though `bool` subclasses `int`, because
+    ``True``/``False`` in a brightness field almost always indicates a bug in the
+    caller (e.g. a missing type check on deserialised JSON).
+    """
+    if isinstance(level, bool) or not isinstance(level, int) or not 0 <= level <= 100:
+        raise ValueError(f"Brightness must be an integer between 0 and 100: {level}")
