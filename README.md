@@ -32,10 +32,10 @@ If installed as a package:
 chronobright
 ```
 
-Or directly from the repository root:
+Or as a module from the repository root:
 
 ```bash
-python main.py
+python -m chronobright
 ```
 
 ## How It Works
@@ -68,13 +68,13 @@ Log output also appears in the console when the application is started from a te
 
 ```
 ChronoBright/
-├── main.py                          # Entry point
 ├── pyproject.toml                   # Package metadata and build config
 ├── requirements.txt                 # Pinned production dependencies
 ├── requirements-dev.txt             # Development tools (ruff, mypy, pytest)
 └── chronobright/
     ├── __init__.py                  # Package version
-    ├── config.py                    # App constants and platform-aware paths
+    ├── __main__.py                  # Entry point (`python -m chronobright`)
+    ├── config.py                    # App constants, platform-aware paths, shared validators
     ├── logger.py                    # Centralised logging configuration
     ├── models.py                    # Validated schedule data model
     ├── services/

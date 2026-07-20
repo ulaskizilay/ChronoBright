@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import threading
 import time
-from datetime import datetime, time as dt_time
-from typing import Callable
+from collections.abc import Callable
+from datetime import datetime
+from datetime import time as dt_time
 
 import schedule
 
