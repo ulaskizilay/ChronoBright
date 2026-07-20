@@ -29,8 +29,14 @@ class BrightnessService:
 
         return int(result)
 
-    def set_brightness(self, level: int) -> None:
+    def set_brightness(self, level: int, display: int | None = None) -> None:
         """Set display brightness to *level* percent (0–100).
+
+        Args:
+            level: Target brightness in percent.
+            display: Optional display index (0-based) to target a single monitor.
+                When ``None`` (default), all detected displays are set to *level* —
+                matching ``screen_brightness_control.set_brightness`` semantics.
 
         Raises:
             ValueError: If *level* is not a valid brightness percentage.
@@ -38,7 +44,13 @@ class BrightnessService:
         """
         validate_brightness_level(level)
         try:
-            sbc.set_brightness(level)
-            logger.debug("Brightness set to %d%%.", level)
+            if display is None:
+                sbc.set_brightness(level)
+            else:
+                sbc.set_brightness(level, display=display)
+            if display is None:
+                logger.debug("Brightness set to %d%% for all displays.", level)
+            else:
+                logger.debug("Brightness set to %d%% on display %d.", level, display)
         except Exception as exc:
             raise RuntimeError(f"Failed to set brightness to {level}%") from exc
