@@ -149,6 +149,10 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
         self._lbl_evening_value.configure(text=f"Brightness: {int(value)}%")
 
     def _on_apply_clicked(self) -> None:
+        # Save first, then apply atomically. If save_schedule raises OSError on disk
+        # failure, apply_schedule is never called and the in-memory scheduler is left
+        # untouched (yesterday's schedule keeps running). ValueError here can only come
+        # from _read_form_config validating an empty/invalid entry.
         try:
             schedule_config = self._read_form_config()
             self._settings_service.save_schedule(schedule_config)
