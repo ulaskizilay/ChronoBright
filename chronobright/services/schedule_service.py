@@ -96,7 +96,19 @@ class ScheduleService:
     # ------------------------------------------------------------------
 
     def _apply_immediate_brightness(self, config: BrightnessScheduleConfig) -> None:
-        """Apply whichever period is currently active without waiting for a schedule tick."""
+        """Apply whichever period is currently active without waiting for a schedule tick.
+
+        Note: the ``schedule`` library fires daily jobs once per local-time match; it
+        does not retroactively run jobs that were missed while the application was
+        closed. Instead of replaying missed transitions, this method computes the
+        currently active period and applies it once at startup. This is sufficient
+        for a brightness scheduler — only the *current* level matters to the user.
+
+        ``datetime.now()`` and ``schedule.every().day.at(...)`` both operate in the
+        host's local timezone. DST transitions (spring-forward / fall-back) can
+        therefore cause a single daily job to be skipped or run twice per year; this
+        is an accepted limitation for v1.
+        """
         now = datetime.now().time()
         morning_time = self._parse_clock(config.morning_time)
         evening_time = self._parse_clock(config.evening_time)

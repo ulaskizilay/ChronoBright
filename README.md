@@ -110,6 +110,12 @@ Run tests:
 pytest
 ```
 
+Run tests with coverage (enforces an 85% threshold, configured in `pyproject.toml`):
+
+```bash
+pytest --cov=chronobright --cov-report=term-missing
+```
+
 ## License
 
 MIT
