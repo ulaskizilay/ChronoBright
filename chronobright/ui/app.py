@@ -34,7 +34,7 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
         self.protocol("WM_DELETE_WINDOW", self._on_window_close)
 
         self._brightness_service = BrightnessService()
-        self._startup_brightness = self._brightness_service.get_brightness()
+        self._startup_brightness = self._brightness_service.get_all_brightness()
         self._settings_service = SettingsService()
         self._schedule_service = ScheduleService(on_brightness_change=self._apply_brightness)
         self._tray_service = TrayService(
@@ -43,6 +43,7 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
             on_exit_application=self._exit_from_tray,
         )
         self._is_exiting = False
+        self._window_in_tray = False
 
         self._build_layout()
         self._load_saved_schedule()
@@ -186,10 +187,11 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
 
     def hide_window_to_tray(self) -> None:
         """Withdraw the window without stopping background services."""
-        if self._is_exiting or not self.winfo_viewable():
+        if self._is_exiting or self._window_in_tray:
             return
 
         self.withdraw()
+        self._window_in_tray = True
         self._tray_service.set_window_visible(False)
         logger.info("Window hidden to tray.")
 
@@ -201,6 +203,7 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
         self.deiconify()
         self.lift()
         self.focus_force()
+        self._window_in_tray = False
         self._tray_service.set_window_visible(True)
         logger.info("Window restored from tray.")
 
@@ -277,7 +280,14 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
             return
 
         try:
-            self._brightness_service.set_brightness(self._startup_brightness)
-            logger.info("Restored startup brightness: %d%%.", self._startup_brightness)
+            if len(self._startup_brightness) == 1:
+                self._brightness_service.set_brightness(self._startup_brightness[0])
+            else:
+                for index, level in enumerate(self._startup_brightness):
+                    self._brightness_service.set_brightness(level, display=index)
+            logger.info(
+                "Restored startup brightness for %d display(s).",
+                len(self._startup_brightness),
+            )
         except RuntimeError as exc:
             logger.error("Failed to restore startup brightness: %s", exc)

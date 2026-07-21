@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 from chronobright import config
+from chronobright.config import validate_brightness_level
 from chronobright.logger import get_logger
 from chronobright.models import BrightnessScheduleConfig
 
@@ -44,11 +46,10 @@ class SettingsService:
 
             schedule_config = BrightnessScheduleConfig(
                 morning_time=str(payload["morning_time"]),
-                morning_brightness=int(payload["morning_brightness"]),
+                morning_brightness=self._parse_brightness(payload["morning_brightness"]),
                 evening_time=str(payload["evening_time"]),
-                evening_brightness=int(payload["evening_brightness"]),
+                evening_brightness=self._parse_brightness(payload["evening_brightness"]),
             )
-            schedule_config.validate()
             logger.info("Loaded schedule from %s.", self._config_path)
             return SettingsLoadResult(config=schedule_config, source="saved")
 
@@ -61,7 +62,7 @@ class SettingsService:
             return SettingsLoadResult(config=self._default_config(), source="fallback")
 
     def save_schedule(self, schedule_config: BrightnessScheduleConfig) -> None:
-        """Validate and persist *schedule_config* to disk.
+        """Validate and persist *schedule_config* to disk atomically.
 
         Raises:
             ValueError: If *schedule_config* contains invalid values.
@@ -78,10 +79,20 @@ class SettingsService:
 
         self._config_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with self._config_path.open("w", encoding="utf-8") as fh:
+        tmp_path = self._config_path.with_suffix(".json.tmp")
+        with tmp_path.open("w", encoding="utf-8") as fh:
             json.dump(payload, fh, indent=2)
+        os.replace(tmp_path, self._config_path)
 
         logger.info("Schedule saved to %s.", self._config_path)
+
+    @staticmethod
+    def _parse_brightness(value: object) -> int:
+        """Parse a JSON brightness value, rejecting bools before ``int()`` coercion."""
+        validate_brightness_level(value)
+        if not isinstance(value, int):
+            raise ValueError(f"Brightness must be an integer between 0 and 100: {value}")
+        return value
 
     @staticmethod
     def _default_config() -> BrightnessScheduleConfig:

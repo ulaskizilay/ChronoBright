@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import platform
 from pathlib import Path
 
 APP_NAME = "ChronoBright"
@@ -20,13 +19,9 @@ DEFAULT_EVENING_BRIGHTNESS = 80
 
 
 def _resolve_base_dir() -> Path:
-    """Return the platform-appropriate base directory for user data."""
-    if platform.system() == "Windows":
-        appdata = os.environ.get("APPDATA")
-        return Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
-
-    # macOS and Linux
-    return Path.home() / ".config"
+    """Return the Windows AppData Roaming directory for user data."""
+    appdata = os.environ.get("APPDATA")
+    return Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
 
 
 CONFIG_DIR: Path = _resolve_base_dir() / APP_NAME

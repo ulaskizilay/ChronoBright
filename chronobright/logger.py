@@ -14,12 +14,14 @@ import sys
 
 from chronobright import config
 
+_configured = False
+
 
 def _configure_root_logger() -> None:
-    """Set up the root logger once at import time."""
+    """Set up the root logger once on first use."""
     root = logging.getLogger("chronobright")
     if root.handlers:
-        return  # already configured
+        return
 
     root.setLevel(logging.DEBUG)
 
@@ -28,13 +30,11 @@ def _configure_root_logger() -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    # Console handler — INFO and above
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(fmt)
     root.addHandler(console_handler)
 
-    # File handler — DEBUG and above (rotated manually; keep simple for v1)
     try:
         config.LOG_DIR.mkdir(parents=True, exist_ok=True)
         file_handler = logging.handlers.RotatingFileHandler(
@@ -50,9 +50,14 @@ def _configure_root_logger() -> None:
         root.warning("Could not open log file. File logging is disabled.")
 
 
-_configure_root_logger()
+def _ensure_configured() -> None:
+    global _configured
+    if not _configured:
+        _configure_root_logger()
+        _configured = True
 
 
 def get_logger(name: str) -> logging.Logger:
     """Return a child logger scoped under the 'chronobright' namespace."""
+    _ensure_configured()
     return logging.getLogger(name)

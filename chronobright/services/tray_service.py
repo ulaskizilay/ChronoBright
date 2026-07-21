@@ -59,6 +59,10 @@ class TrayService:
         if self._icon is None:
             return
         self._icon.stop()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
+        self._icon = None
+        self._thread = None
         logger.info("Tray icon stopped.")
 
     def set_window_visible(self, is_visible: bool) -> None:

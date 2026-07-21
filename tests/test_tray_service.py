@@ -66,3 +66,78 @@ def test_can_show_and_can_hide_window_reflect_visibility_state() -> None:
     service._window_visible = False
     assert service._can_show_window(item) is True
     assert service._can_hide_window(item) is False
+
+
+def test_start_creates_icon_and_thread(mocker: pytest_mock.MockerFixture) -> None:
+    service = _build_service()
+    mock_icon = MagicMock()
+    mock_thread = MagicMock()
+    mocker.patch("chronobright.services.tray_service.pystray.Icon", return_value=mock_icon)
+    mocker.patch(
+        "chronobright.services.tray_service.threading.Thread",
+        return_value=mock_thread,
+    )
+
+    service.start()
+
+    mock_thread.start.assert_called_once()
+    assert service._icon is mock_icon
+
+
+def test_start_is_noop_when_thread_alive(mocker: pytest_mock.MockerFixture) -> None:
+    service = _build_service()
+    alive_thread = MagicMock()
+    alive_thread.is_alive.return_value = True
+    service._thread = alive_thread
+    create_thread = mocker.patch("chronobright.services.tray_service.threading.Thread")
+
+    service.start()
+
+    create_thread.assert_not_called()
+
+
+def test_stop_joins_thread_and_clears_state(mocker: pytest_mock.MockerFixture) -> None:
+    service = _build_service()
+    mock_icon = MagicMock()
+    mock_thread = MagicMock()
+    service._icon = mock_icon
+    service._thread = mock_thread
+
+    service.stop()
+
+    mock_icon.stop.assert_called_once()
+    mock_thread.join.assert_called_once_with(timeout=2.0)
+    assert service._icon is None
+    assert service._thread is None
+
+
+def test_stop_is_noop_without_icon() -> None:
+    service = _build_service()
+    service.stop()
+    assert service._icon is None
+
+
+def test_show_hide_exit_callbacks_delegate(mocker: pytest_mock.MockerFixture) -> None:
+    show = mocker.Mock()
+    hide = mocker.Mock()
+    exit_app = mocker.Mock()
+    service = TrayService(
+        on_show_window=show,
+        on_hide_window=hide,
+        on_exit_application=exit_app,
+    )
+    item = MagicMock()
+    icon = MagicMock()
+
+    service._show_window(icon, item)
+    service._hide_window(icon, item)
+    service._exit_application(icon, item)
+
+    show.assert_called_once_with()
+    hide.assert_called_once_with()
+    exit_app.assert_called_once_with()
+
+
+def test_update_menu_noop_without_icon() -> None:
+    service = _build_service()
+    service._update_menu()

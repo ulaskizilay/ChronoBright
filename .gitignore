@@ -58,6 +58,3 @@ Desktop.ini
 .env
 .env.*
 *.log
-
-# User configuration (written at runtime to %APPDATA%\ChronoBright\)
-user_config.json
