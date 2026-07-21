@@ -13,8 +13,8 @@ logger = get_logger(__name__)
 class BrightnessService:
     """Read and set the system display brightness."""
 
-    def get_brightness(self) -> int | None:
-        """Return current brightness as an integer percentage, or None on failure."""
+    def get_all_brightness(self) -> list[int] | None:
+        """Return per-display brightness levels, or None on failure."""
         try:
             result = sbc.get_brightness()
         except Exception as exc:
@@ -25,9 +25,16 @@ class BrightnessService:
             if not result:
                 logger.warning("Brightness query returned an empty list.")
                 return None
-            return int(result[0])
+            return [int(level) for level in result]
 
-        return int(result)
+        return [int(result)]
+
+    def get_brightness(self) -> int | None:
+        """Return the primary display brightness as an integer percentage, or None on failure."""
+        levels = self.get_all_brightness()
+        if levels is None:
+            return None
+        return levels[0]
 
     def set_brightness(self, level: int, display: int | None = None) -> None:
         """Set display brightness to *level* percent (0–100).

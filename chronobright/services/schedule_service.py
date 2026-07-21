@@ -6,18 +6,23 @@ import threading
 import time
 from collections.abc import Callable
 from datetime import datetime
-from datetime import time as dt_time
-
-import schedule
 
 from chronobright.logger import get_logger
 from chronobright.models import BrightnessScheduleConfig
+from chronobright.time_utils import is_morning_period_active
 
 logger = get_logger(__name__)
 
+PeriodName = str  # "morning" | "evening"
+
 
 class ScheduleService:
-    """Manage a daily brightness schedule running in a daemon thread."""
+    """Manage a daily brightness schedule running in a daemon thread.
+
+    Period transitions are detected by polling the active schedule window instead
+    of firing one-shot wall-clock jobs. This avoids duplicate or skipped triggers
+    during daylight-saving time changes.
+    """
 
     def __init__(
         self,
@@ -26,9 +31,10 @@ class ScheduleService:
     ) -> None:
         self._on_brightness_change = on_brightness_change
         self._poll_interval_seconds = poll_interval_seconds
-        self._scheduler = schedule.Scheduler()
         self._running = threading.Event()
         self._thread: threading.Thread | None = None
+        self._config: BrightnessScheduleConfig | None = None
+        self._active_period: PeriodName | None = None
 
     # ------------------------------------------------------------------
     # Public interface
@@ -45,44 +51,34 @@ class ScheduleService:
         logger.info("Schedule service started.")
 
     def stop(self) -> None:
-        """Signal the background thread to stop at its next poll cycle."""
+        """Signal the background thread to stop and wait for it to finish."""
         self._running.clear()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
         logger.info("Schedule service stopped.")
 
     @property
     def job_count(self) -> int:
-        """Number of scheduled jobs currently registered (read-only inspection)."""
-        return len(self._scheduler.jobs)
+        """Number of configured schedule transitions (morning + evening)."""
+        return 2 if self._config is not None else 0
+
+    @property
+    def active_period(self) -> PeriodName | None:
+        """Currently active schedule period, if a schedule is loaded."""
+        return self._active_period
 
     def replace_brightness_callback(self, callback: Callable[[int, str], None]) -> None:
-        """Swap the brightness-change callback.
-
-        Primarily a testing seam: lets a test substitute a failing or recording
-        callback without touching the private ``_on_brightness_change`` attribute.
-        Production code should set the callback once via the constructor.
-        """
+        """Swap the brightness-change callback."""
         self._on_brightness_change = callback
 
     def apply_schedule(self, config: BrightnessScheduleConfig) -> str:
-        """Validate *config*, register daily jobs, and immediately apply the correct period.
+        """Validate *config*, store it, and immediately apply the correct period.
 
         Returns a human-readable status string describing the active schedule.
         """
         config.validate()
-        self._scheduler.clear()
-
+        self._config = config
         self._apply_immediate_brightness(config)
-
-        self._scheduler.every().day.at(config.morning_time).do(
-            self._on_brightness_change,
-            config.morning_brightness,
-            "Morning",
-        )
-        self._scheduler.every().day.at(config.evening_time).do(
-            self._on_brightness_change,
-            config.evening_brightness,
-            "Evening",
-        )
 
         status = (
             f"Schedule active — morning {config.morning_time} @ {config.morning_brightness}%, "
@@ -96,40 +92,44 @@ class ScheduleService:
     # ------------------------------------------------------------------
 
     def _apply_immediate_brightness(self, config: BrightnessScheduleConfig) -> None:
-        """Apply whichever period is currently active without waiting for a schedule tick.
-
-        Note: the ``schedule`` library fires daily jobs once per local-time match; it
-        does not retroactively run jobs that were missed while the application was
-        closed. Instead of replaying missed transitions, this method computes the
-        currently active period and applies it once at startup. This is sufficient
-        for a brightness scheduler — only the *current* level matters to the user.
-
-        ``datetime.now()`` and ``schedule.every().day.at(...)`` both operate in the
-        host's local timezone. DST transitions (spring-forward / fall-back) can
-        therefore cause a single daily job to be skipped or run twice per year; this
-        is an accepted limitation for v1.
-        """
-        now = datetime.now().time()
-        morning_time = self._parse_clock(config.morning_time)
-        evening_time = self._parse_clock(config.evening_time)
-
-        if morning_time < evening_time:
-            morning_active = morning_time <= now < evening_time
-        else:
-            morning_active = not (evening_time <= now < morning_time)
-
-        if morning_active:
-            logger.debug("Immediate apply: morning period active.")
-            self._on_brightness_change(config.morning_brightness, "Morning (immediate)")
-        else:
-            logger.debug("Immediate apply: evening period active.")
-            self._on_brightness_change(config.evening_brightness, "Evening (immediate)")
+        """Apply whichever period is currently active without waiting for a poll tick."""
+        period = self._current_period(config)
+        self._active_period = period
+        level, label = self._period_settings(config, period)
+        logger.debug("Immediate apply: %s period active.", period)
+        self._on_brightness_change(level, f"{label} (immediate)")
 
     def _run_loop(self) -> None:
         while self._running.is_set():
-            self._scheduler.run_pending()
+            try:
+                self._check_period_transition()
+            except Exception:
+                logger.exception("Schedule loop error")
+                self._running.clear()
             time.sleep(self._poll_interval_seconds)
 
+    def _check_period_transition(self) -> None:
+        if self._config is None:
+            return
+
+        period = self._current_period(self._config)
+        if period == self._active_period:
+            return
+
+        self._active_period = period
+        level, label = self._period_settings(self._config, period)
+        logger.info("Schedule period changed to %s.", period)
+        self._on_brightness_change(level, label)
+
     @staticmethod
-    def _parse_clock(value: str) -> dt_time:
-        return datetime.strptime(value, "%H:%M").time()
+    def _current_period(config: BrightnessScheduleConfig) -> PeriodName:
+        now = datetime.now().time()
+        if is_morning_period_active(config.morning_time, config.evening_time, now):
+            return "morning"
+        return "evening"
+
+    @staticmethod
+    def _period_settings(config: BrightnessScheduleConfig, period: PeriodName) -> tuple[int, str]:
+        if period == "morning":
+            return config.morning_brightness, "Morning"
+        return config.evening_brightness, "Evening"

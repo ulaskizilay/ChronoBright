@@ -1,5 +1,33 @@
-"""Conftest for ChronoBright tests.
+"""Shared fixtures for ChronoBright tests."""
 
-Empty for now: ``pytest-mock`` injects its ``mocker`` fixture automatically.
-Add shared fixtures here as the test-suite grows.
-"""
+from __future__ import annotations
+
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+from chronobright.models import BrightnessScheduleConfig
+
+
+@pytest.fixture
+def sample_config() -> BrightnessScheduleConfig:
+    return BrightnessScheduleConfig(
+        morning_time="08:00",
+        morning_brightness=90,
+        evening_time="19:00",
+        evening_brightness=80,
+    )
+
+
+@pytest.fixture
+def config_path(tmp_path: Path) -> Path:
+    return tmp_path / "config.json"
+
+
+@pytest.fixture
+def mock_sbc(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    mock = MagicMock()
+    mock.get_brightness.return_value = [75]
+    monkeypatch.setattr("chronobright.services.brightness_service.sbc", mock)
+    return mock

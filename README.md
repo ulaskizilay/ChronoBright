@@ -40,11 +40,18 @@ python -m chronobright
 
 ## How It Works
 
-On startup, ChronoBright reads the saved configuration (if any), immediately sets brightness to whichever period — morning or evening — is currently active, and registers two daily jobs with the scheduler. A daemon thread ticks the scheduler every second in the background, so you never have to think about it.
+On startup, ChronoBright reads the saved configuration (if any), immediately applies
+whichever period — morning or evening — is currently active, and starts a background
+daemon thread. The thread polls every second and detects **period transitions** (morning
+↔ evening) rather than firing one-shot wall-clock jobs. This approach is
+DST-safe: daylight-saving changes do not cause duplicate or skipped brightness updates.
 
-> **Multi-display note:** when a scheduled period applies, all detected displays are set to the same level. On exit, each display is restored to its own startup level. Per-display schedules are not yet exposed in the UI; the underlying `BrightnessService.set_brightness(level, display=...)` API supports it for future use.
+Time inputs accept flexible formats (`8:0`, `9:5`) and are normalised to `HH:MM` before
+validation and storage.
 
-Closing the window sends the application to the system tray rather than quitting. From there you can show the window again or exit fully. On exit, the display is restored to the brightness it had when the application first launched.
+> **Multi-display note:** when a scheduled period applies, all detected displays are set to the same level. On exit, each display is restored to its own startup brightness level. Per-display schedules are not yet exposed in the UI; the underlying `BrightnessService.set_brightness(level, display=...)` API supports it for future use.
+
+Closing the window sends the application to the system tray rather than quitting. From there you can show the window again or exit fully. On exit, each display is restored to the brightness it had when the application first launched.
 
 ## Configuration
 
@@ -54,7 +61,7 @@ User settings are stored at:
 %APPDATA%\ChronoBright\config.json
 ```
 
-The file is plain JSON and is written every time you press **Save & Apply Schedule**. You can edit it by hand if needed — the application validates it on load and falls back to defaults if something is wrong.
+The file is plain JSON and is written atomically every time you press **Save & Apply Schedule** (write to a temporary file, then replace). Times must use `HH:MM` format in the file; the UI accepts flexible input such as `8:0`. You can edit the file by hand if needed — the application validates it on load and falls back to defaults if something is wrong.
 
 ## Logs
 
@@ -73,18 +80,38 @@ ChronoBright/
 ├── pyproject.toml                   # Package metadata and build config
 ├── requirements.txt                 # Pinned production dependencies
 ├── requirements-dev.txt             # Development tools (ruff, mypy, pytest)
+├── tests/                           # Unit and smoke tests
+│   ├── conftest.py                  # Shared pytest fixtures
+│   ├── test_app.py                  # Application logic (mocked GUI)
+│   ├── test_app_smoke.py            # Import smoke test
+│   ├── test_brightness_service.py
+│   ├── test_config.py
+│   ├── test_logger.py
+│   ├── test_main.py
+│   ├── test_models.py
+│   ├── test_schedule_service.py
+│   ├── test_settings_service.py
+│   ├── test_theme.py
+│   ├── test_time_utils.py
+│   └── test_tray_service.py
+├── .github/workflows/               # CI and release automation
+│   ├── ci.yml                       # Lint, type-check, and test on Windows
+│   └── release.yml                  # Build and publish release artifacts
 └── chronobright/
     ├── __init__.py                  # Package version
     ├── __main__.py                  # Entry point (`python -m chronobright`)
-    ├── config.py                    # App constants, platform-aware paths, shared validators
-    ├── logger.py                    # Centralised logging configuration
+    ├── config.py                    # App constants, paths, shared validators
+    ├── logger.py                    # Centralised logging (lazy init)
     ├── models.py                    # Validated schedule data model
+    ├── time_utils.py                # Time normalisation and period logic
     ├── services/
+    │   ├── __init__.py
     │   ├── brightness_service.py    # Read/write display brightness
-    │   ├── schedule_service.py      # Background scheduler thread
-    │   ├── settings_service.py      # Config persistence (JSON)
+    │   ├── schedule_service.py      # Polling-based background scheduler
+    │   ├── settings_service.py      # Atomic JSON config persistence
     │   └── tray_service.py          # System tray icon and menu
     └── ui/
+        ├── __init__.py
         ├── app.py                   # Main application window
         └── theme.py                 # CustomTkinter theme setup
 ```
@@ -110,11 +137,13 @@ Run tests:
 pytest
 ```
 
-Run tests with coverage (enforces an 85% threshold, configured in `pyproject.toml`):
+Run tests with coverage (enforces an 85% threshold, configured in `pyproject.toml`; also checked in CI on Windows):
 
 ```bash
 pytest --cov=chronobright --cov-report=term-missing
 ```
+
+Pull requests and pushes to `main` trigger the GitHub Actions CI workflow (Windows runner: ruff, mypy, pytest with coverage). Tag pushes matching `v*` build release artifacts via `release.yml`.
 
 ## License
 
