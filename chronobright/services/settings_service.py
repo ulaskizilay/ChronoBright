@@ -9,6 +9,7 @@ from pathlib import Path
 
 from chronobright import config
 from chronobright.config import validate_brightness_level
+from chronobright.i18n import DEFAULT_LANGUAGE, LanguageCode, normalize_language
 from chronobright.logger import get_logger
 from chronobright.models import BrightnessScheduleConfig
 
@@ -21,6 +22,7 @@ class SettingsLoadResult:
 
     config: BrightnessScheduleConfig
     source: str  # "saved" | "fallback" | "missing"
+    language: LanguageCode = DEFAULT_LANGUAGE
 
 
 class SettingsService:
@@ -50,8 +52,9 @@ class SettingsService:
                 evening_time=str(payload["evening_time"]),
                 evening_brightness=self._parse_brightness(payload["evening_brightness"]),
             )
+            language = normalize_language(payload.get("language", DEFAULT_LANGUAGE))
             logger.info("Loaded schedule from %s.", self._config_path)
-            return SettingsLoadResult(config=schedule_config, source="saved")
+            return SettingsLoadResult(config=schedule_config, source="saved", language=language)
 
         except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError) as exc:
             logger.warning(
@@ -61,7 +64,11 @@ class SettingsService:
             )
             return SettingsLoadResult(config=self._default_config(), source="fallback")
 
-    def save_schedule(self, schedule_config: BrightnessScheduleConfig) -> None:
+    def save_schedule(
+        self,
+        schedule_config: BrightnessScheduleConfig,
+        language: object = DEFAULT_LANGUAGE,
+    ) -> None:
         """Validate and persist *schedule_config* to disk atomically.
 
         Raises:
@@ -75,6 +82,7 @@ class SettingsService:
             "morning_brightness": schedule_config.morning_brightness,
             "evening_time": schedule_config.evening_time,
             "evening_brightness": schedule_config.evening_brightness,
+            "language": normalize_language(language),
         }
 
         self._config_path.parent.mkdir(parents=True, exist_ok=True)

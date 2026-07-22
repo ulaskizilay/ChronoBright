@@ -30,6 +30,31 @@ def test_save_and_load_round_trip(service: SettingsService, sample_config: Brigh
     assert result.config == sample_config
 
 
+def test_save_and_load_preserves_language(service: SettingsService, sample_config: BrightnessScheduleConfig) -> None:
+    service.save_schedule(sample_config, language="tr")
+
+    assert service.load_schedule().language == "tr"
+
+
+def test_load_schedule_defaults_invalid_language_to_english(
+    service: SettingsService, config_path: Path
+) -> None:
+    config_path.write_text(
+        json.dumps(
+            {
+                "morning_time": "08:00",
+                "morning_brightness": 90,
+                "evening_time": "19:00",
+                "evening_brightness": 80,
+                "language": "unsupported",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert service.load_schedule().language == "en"
+
+
 def test_load_schedule_corrupt_json_returns_fallback(service: SettingsService, config_path: Path) -> None:
     config_path.write_text("{not valid json", encoding="utf-8")
     result = service.load_schedule()

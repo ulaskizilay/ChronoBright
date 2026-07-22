@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "ChronoBright"
 APP_TITLE = "ChronoBright"
-WINDOW_SIZE = "520x400"
+WINDOW_SIZE = "520x440"
 
 APPEARANCE_MODE = "System"
 COLOR_THEME = "dark-blue"
