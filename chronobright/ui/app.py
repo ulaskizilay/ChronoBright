@@ -5,11 +5,12 @@ from __future__ import annotations
 import customtkinter as ctk
 
 from chronobright import config
+from chronobright.i18n import SUPPORTED_LANGUAGES, Translator
 from chronobright.logger import get_logger
 from chronobright.models import BrightnessScheduleConfig
 from chronobright.services.brightness_service import BrightnessService
 from chronobright.services.schedule_service import ScheduleService
-from chronobright.services.settings_service import SettingsService
+from chronobright.services.settings_service import SettingsLoadResult, SettingsService
 from chronobright.services.tray_service import TrayService
 from chronobright.ui.theme import apply_theme
 
@@ -36,17 +37,21 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
         self._brightness_service = BrightnessService()
         self._startup_brightness = self._brightness_service.get_all_brightness()
         self._settings_service = SettingsService()
+        loaded_settings = self._settings_service.load_schedule()
+        self._current_schedule_config = loaded_settings.config
+        self._translator = Translator(loaded_settings.language)
         self._schedule_service = ScheduleService(on_brightness_change=self._apply_brightness)
         self._tray_service = TrayService(
             on_show_window=self._show_window_from_tray,
             on_hide_window=self._hide_window_from_tray,
             on_exit_application=self._exit_from_tray,
+            translate=self._translate,
         )
         self._is_exiting = False
         self._window_in_tray = False
 
         self._build_layout()
-        self._load_saved_schedule()
+        self._load_saved_schedule(loaded_settings)
         self._schedule_service.start()
         self._tray_service.start()
 
@@ -60,22 +65,33 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
 
         self._header_label = ctk.CTkLabel(
             self,
-            text="Display Brightness Scheduler",
+            text=self._translate("header"),
             font=ctk.CTkFont(size=20, weight="bold"),
         )
-        self._header_label.grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 10))
+        self._header_label.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="w")
+
+        self._language_label = ctk.CTkLabel(self, text=self._translate("language"))
+        self._language_label.grid(row=0, column=1, padx=(0, 20), pady=(20, 10), sticky="e")
+        self._language_selector = ctk.CTkOptionMenu(
+            self,
+            values=list(SUPPORTED_LANGUAGES.values()),
+            command=self._on_language_changed,
+            width=100,
+        )
+        self._language_selector.set(SUPPORTED_LANGUAGES[self._translator.language])
+        self._language_selector.grid(row=0, column=1, padx=(0, 20), pady=(52, 0), sticky="e")
 
         self._build_morning_panel()
         self._build_evening_panel()
 
         self._btn_apply = ctk.CTkButton(
-            self, text="Save & Apply Schedule", command=self._on_apply_clicked
+            self, text=self._translate("save_apply"), command=self._on_apply_clicked
         )
         self._btn_apply.grid(row=2, column=0, padx=(20, 10), pady=10, sticky="ew")
 
         self._btn_exit = ctk.CTkButton(
             self,
-            text="Exit Application",
+            text=self._translate("exit"),
             fg_color="#b91c1c",
             hover_color="#991b1b",
             command=self.exit_application,
@@ -86,6 +102,7 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
             self, text="Status: Idle — configure and press Apply", text_color="gray"
         )
         self._lbl_status.grid(row=3, column=0, columnspan=2, padx=20, pady=10)
+        self._set_status("idle", "gray")
 
     def _build_morning_panel(self) -> None:
         frame = ctk.CTkFrame(self)
@@ -93,7 +110,10 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
         frame.grid_columnconfigure(0, weight=1)
         self._morning_frame = frame
 
-        ctk.CTkLabel(frame, text="Morning Settings", font=ctk.CTkFont(weight="bold")).grid(
+        self._morning_heading = ctk.CTkLabel(
+            frame, text=self._translate("morning_settings"), font=ctk.CTkFont(weight="bold")
+        )
+        self._morning_heading.grid(
             row=0, column=0, padx=10, pady=10
         )
 
@@ -109,7 +129,7 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
         self._slider_morning.configure(command=self._on_morning_slider_moved)
 
         self._lbl_morning_value = ctk.CTkLabel(
-            frame, text=f"Brightness: {config.DEFAULT_MORNING_BRIGHTNESS}%"
+            frame, text=self._translate("brightness", level=config.DEFAULT_MORNING_BRIGHTNESS)
         )
         self._lbl_morning_value.grid(row=3, column=0, pady=(0, 10))
 
@@ -119,7 +139,10 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
         frame.grid_columnconfigure(0, weight=1)
         self._evening_frame = frame
 
-        ctk.CTkLabel(frame, text="Evening Settings", font=ctk.CTkFont(weight="bold")).grid(
+        self._evening_heading = ctk.CTkLabel(
+            frame, text=self._translate("evening_settings"), font=ctk.CTkFont(weight="bold")
+        )
+        self._evening_heading.grid(
             row=0, column=0, padx=10, pady=10
         )
 
@@ -135,7 +158,7 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
         self._slider_evening.configure(command=self._on_evening_slider_moved)
 
         self._lbl_evening_value = ctk.CTkLabel(
-            frame, text=f"Brightness: {config.DEFAULT_EVENING_BRIGHTNESS}%"
+            frame, text=self._translate("brightness", level=config.DEFAULT_EVENING_BRIGHTNESS)
         )
         self._lbl_evening_value.grid(row=3, column=0, pady=(0, 10))
 
@@ -144,10 +167,10 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
     # ------------------------------------------------------------------
 
     def _on_morning_slider_moved(self, value: float) -> None:
-        self._lbl_morning_value.configure(text=f"Brightness: {int(value)}%")
+        self._lbl_morning_value.configure(text=self._translate("brightness", level=int(value)))
 
     def _on_evening_slider_moved(self, value: float) -> None:
-        self._lbl_evening_value.configure(text=f"Brightness: {int(value)}%")
+        self._lbl_evening_value.configure(text=self._translate("brightness", level=int(value)))
 
     def _on_apply_clicked(self) -> None:
         # Save first, then apply atomically. If save_schedule raises OSError on disk
@@ -156,15 +179,29 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
         # from _read_form_config validating an empty/invalid entry.
         try:
             schedule_config = self._read_form_config()
-            self._settings_service.save_schedule(schedule_config)
-            status = self._schedule_service.apply_schedule(schedule_config)
-            self._set_status(f"{status} [saved]", "green")
+            self._settings_service.save_schedule(schedule_config, self._translator.language)
+            self._schedule_service.apply_schedule(schedule_config)
+            self._current_schedule_config = schedule_config
+            self._set_status("schedule_saved", "green")
         except ValueError as exc:
             logger.warning("Invalid schedule input: %s", exc)
-            self._set_status(f"Invalid input: {exc}", "red")
+            self._set_status("invalid_input", "red")
         except OSError as exc:
             logger.error("Failed to save config: %s", exc)
-            self._set_status(f"Could not save config: {exc}", "red")
+            self._set_status("save_error", "red")
+
+    def _on_language_changed(self, display_name: str) -> None:
+        """Switch visible text without rebuilding widgets or restarting services."""
+        language = next(code for code, name in SUPPORTED_LANGUAGES.items() if name == display_name)
+        if language == self._translator.language:
+            return
+        self._translator.set_language(language)
+        try:
+            self._settings_service.save_schedule(self._current_schedule_config, language)
+        except OSError as exc:
+            logger.error("Failed to save language preference: %s", exc)
+        self._refresh_translated_widgets()
+        self._tray_service.refresh_menu_text()
 
     def _on_window_close(self) -> None:
         self.hide_window_to_tray()
@@ -180,10 +217,15 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
 
         try:
             self._brightness_service.set_brightness(target)
-            self._update_status_safe(f"Set to {target}% ({period_name})", "blue")
+            self._update_status_safe(
+                "brightness_applied",
+                "blue",
+                level=target,
+                period_key=period_name.split()[0].lower(),
+            )
         except RuntimeError as exc:
             logger.error("%s", exc)
-            self._update_status_safe("Error — check logs for details", "red")
+            self._update_status_safe("brightness_error", "red")
 
     def hide_window_to_tray(self) -> None:
         """Withdraw the window without stopping background services."""
@@ -232,20 +274,21 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
     def _exit_from_tray(self) -> None:
         self.after(0, self.exit_application)
 
-    def _load_saved_schedule(self) -> None:
-        result = self._settings_service.load_schedule()
+    def _load_saved_schedule(self, result: SettingsLoadResult | None = None) -> None:
+        if result is None:
+            result = self._settings_service.load_schedule()
         self._populate_form(result.config)
 
         if result.source == "saved":
-            status = self._schedule_service.apply_schedule(result.config)
-            self._set_status(f"{status} [loaded]", "green")
+            self._schedule_service.apply_schedule(result.config)
+            self._set_status("schedule_loaded", "green")
             return
 
         if result.source == "fallback":
-            self._set_status("Corrupt config detected — defaults loaded", "red")
+            self._set_status("corrupt_config", "red")
             return
 
-        self._set_status("No saved config — configure and press Apply", "gray")
+        self._set_status("missing_config", "gray")
 
     def _populate_form(self, schedule_config: BrightnessScheduleConfig) -> None:
         self._entry_morning_time.delete(0, "end")
@@ -268,11 +311,41 @@ class ChronoBrightApp(ctk.CTk):  # type: ignore[misc]
         cfg.validate()
         return cfg
 
-    def _update_status_safe(self, text: str, color: str) -> None:
-        self.after(0, lambda: self._set_status(text, color))
+    def _update_status_safe(self, key: str, color: str, **values: object) -> None:
+        self.after(0, lambda: self._set_status(key, color, **values))
 
-    def _set_status(self, text: str, color: str) -> None:
-        self._lbl_status.configure(text=f"Status: {text}", text_color=color)
+    def _set_status(self, key: str, color: str, **values: object) -> None:
+        self._status_key = key
+        self._status_values = values
+        self._status_color = color
+        message = self._format_status(key, values)
+        self._lbl_status.configure(text=self._translate("status", message=message), text_color=color)
+
+    def _translate(self, key: str, **values: object) -> str:
+        return self._translator.translate(key, **values)
+
+    def _format_status(self, key: str, values: dict[str, object]) -> str:
+        if not self._translator.has_key(key):
+            return key
+
+        translated_values = dict(values)
+        period_key = translated_values.pop("period_key", None)
+        if isinstance(period_key, str):
+            translated_values["period"] = self._translate(period_key)
+        return self._translate(key, **translated_values)
+
+    def _refresh_translated_widgets(self) -> None:
+        """Update static labels and the status prefix for the selected language."""
+        self.title(self._translate("window_title"))
+        self._header_label.configure(text=self._translate("header"))
+        self._language_label.configure(text=self._translate("language"))
+        self._morning_heading.configure(text=self._translate("morning_settings"))
+        self._evening_heading.configure(text=self._translate("evening_settings"))
+        self._btn_apply.configure(text=self._translate("save_apply"))
+        self._btn_exit.configure(text=self._translate("exit"))
+        self._on_morning_slider_moved(self._slider_morning.get())
+        self._on_evening_slider_moved(self._slider_evening.get())
+        self._set_status(self._status_key, self._status_color, **self._status_values)
 
     def _restore_startup_brightness(self) -> None:
         if self._startup_brightness is None:

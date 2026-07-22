@@ -8,6 +8,7 @@ from collections.abc import Callable
 import pystray
 from PIL import Image, ImageDraw
 
+from chronobright.i18n import Translator
 from chronobright.logger import get_logger
 
 logger = get_logger(__name__)
@@ -21,6 +22,7 @@ class TrayService:
         on_show_window: Callable[[], None],
         on_hide_window: Callable[[], None],
         on_exit_application: Callable[[], None],
+        translate: Callable[[str], str] | None = None,
     ) -> None:
         self._on_show_window = on_show_window
         self._on_hide_window = on_hide_window
@@ -28,6 +30,7 @@ class TrayService:
         self._icon: pystray.Icon | None = None
         self._thread: threading.Thread | None = None
         self._window_visible = True
+        self._translate = translate or Translator().translate
 
     # ------------------------------------------------------------------
     # Public interface
@@ -42,12 +45,7 @@ class TrayService:
             name="ChronoBright",
             title="ChronoBright",
             icon=self._create_icon_image(),
-            menu=pystray.Menu(
-                pystray.MenuItem("Show Window", self._show_window, default=True, enabled=self._can_show_window),
-                pystray.MenuItem("Hide Window", self._hide_window, enabled=self._can_hide_window),
-                pystray.Menu.SEPARATOR,
-                pystray.MenuItem("Exit Application", self._exit_application),
-            ),
+            menu=self._build_menu(),
         )
 
         self._thread = threading.Thread(target=self._icon.run, daemon=True)
@@ -70,9 +68,29 @@ class TrayService:
         self._window_visible = is_visible
         self._update_menu()
 
+    def refresh_menu_text(self) -> None:
+        """Rebuild menu labels after the application language changes."""
+        if self._icon is None:
+            return
+        self._icon.menu = self._build_menu()
+        self._update_menu()
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _build_menu(self) -> pystray.Menu:
+        return pystray.Menu(
+            pystray.MenuItem(
+                self._translate("tray_show"),
+                self._show_window,
+                default=True,
+                enabled=self._can_show_window,
+            ),
+            pystray.MenuItem(self._translate("tray_hide"), self._hide_window, enabled=self._can_hide_window),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem(self._translate("tray_exit"), self._exit_application),
+        )
 
     def _show_window(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         self._on_show_window()

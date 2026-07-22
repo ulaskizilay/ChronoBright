@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from chronobright.i18n import Translator
 from chronobright.models import BrightnessScheduleConfig
 from chronobright.services.settings_service import SettingsLoadResult
 
@@ -34,6 +35,16 @@ def app_instance():
         app._settings_service = mock_settings_cls.return_value
         app._schedule_service = mock_schedule_cls.return_value
         app._tray_service = mock_tray_cls.return_value
+        app._translator = Translator()
+        app._current_schedule_config = BrightnessScheduleConfig(
+            morning_time="08:00",
+            morning_brightness=90,
+            evening_time="19:00",
+            evening_brightness=80,
+        )
+        app._status_key = "idle"
+        app._status_values = {}
+        app._status_color = "gray"
 
         app._entry_morning_time = MagicMock()
         app._entry_evening_time = MagicMock()
@@ -123,7 +134,7 @@ def test_on_apply_clicked_saves_and_applies(app_instance) -> None:
 
     app_instance._on_apply_clicked()
 
-    app_instance._settings_service.save_schedule.assert_called_once_with(config)
+    app_instance._settings_service.save_schedule.assert_called_once_with(config, "en")
     app_instance._schedule_service.apply_schedule.assert_called_once_with(config)
 
 
@@ -257,6 +268,35 @@ def test_on_morning_and_evening_slider_updates_labels(app_instance) -> None:
     app_instance._lbl_evening_value.configure.assert_called_with(text="Brightness: 33%")
 
 
+def test_status_is_retranslated_when_language_changes(app_instance) -> None:
+    app_instance._translator.set_language("tr")
+
+    app_instance._set_status("brightness_applied", "blue", level=85, period_key="morning")
+
+    app_instance._lbl_status.configure.assert_called_with(
+        text="Durum: %85 olarak ayarlandı (Sabah)", text_color="blue"
+    )
+
+
+def test_language_change_persists_preference_and_refreshes_ui(app_instance) -> None:
+    app_instance._language_label = MagicMock()
+    app_instance._header_label = MagicMock()
+    app_instance._morning_heading = MagicMock()
+    app_instance._evening_heading = MagicMock()
+    app_instance._btn_apply = MagicMock()
+    app_instance._btn_exit = MagicMock()
+    app_instance._slider_morning.get.return_value = 90
+    app_instance._slider_evening.get.return_value = 80
+
+    app_instance._on_language_changed("Türkçe")
+
+    assert app_instance._translator.language == "tr"
+    app_instance._settings_service.save_schedule.assert_called_once_with(
+        app_instance._current_schedule_config, "tr"
+    )
+    app_instance._tray_service.refresh_menu_text.assert_called_once_with()
+
+
 def test_populate_form_sets_entries_and_sliders(app_instance) -> None:
     config = BrightnessScheduleConfig(
         morning_time="07:30",
@@ -325,6 +365,11 @@ def test_build_layout_wires_panels() -> None:
     app._on_morning_slider_moved = MagicMock()
     app._on_evening_slider_moved = MagicMock()
     app._on_apply_clicked = MagicMock()
+    app._on_language_changed = MagicMock()
+    app._translate = MagicMock(side_effect=lambda key, **_values: key)
+    app._translator = Translator()
+    app._format_status = ChronoBrightApp._format_status.__get__(app, ChronoBrightApp)
+    app._set_status = ChronoBrightApp._set_status.__get__(app, ChronoBrightApp)
     app.exit_application = MagicMock()
     app._build_morning_panel = ChronoBrightApp._build_morning_panel.__get__(app, ChronoBrightApp)
     app._build_evening_panel = ChronoBrightApp._build_evening_panel.__get__(app, ChronoBrightApp)
@@ -334,6 +379,7 @@ def test_build_layout_wires_panels() -> None:
     frame = MagicMock()
     entry = MagicMock()
     slider = MagicMock()
+    option_menu = MagicMock()
     with (
         patch.object(app_module.ctk, "CTkFont", return_value=MagicMock()),
         patch.object(app_module.ctk, "CTkLabel", return_value=label),
@@ -341,6 +387,7 @@ def test_build_layout_wires_panels() -> None:
         patch.object(app_module.ctk, "CTkFrame", return_value=frame),
         patch.object(app_module.ctk, "CTkEntry", return_value=entry),
         patch.object(app_module.ctk, "CTkSlider", return_value=slider),
+        patch.object(app_module.ctk, "CTkOptionMenu", return_value=option_menu),
     ):
         ChronoBrightApp._build_layout(app)
 
@@ -355,6 +402,7 @@ def test_build_morning_panel_creates_entry_and_slider() -> None:
     app = MagicMock(spec=[])
     app.grid = MagicMock()
     app._on_morning_slider_moved = MagicMock()
+    app._translate = MagicMock(side_effect=lambda key, **_values: key)
     frame = MagicMock()
     entry = MagicMock()
     slider = MagicMock()
@@ -380,6 +428,7 @@ def test_build_evening_panel_creates_entry_and_slider() -> None:
     app = MagicMock(spec=[])
     app.grid = MagicMock()
     app._on_evening_slider_moved = MagicMock()
+    app._translate = MagicMock(side_effect=lambda key, **_values: key)
     frame = MagicMock()
     entry = MagicMock()
     slider = MagicMock()

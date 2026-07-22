@@ -63,6 +63,9 @@ User settings are stored at:
 
 The file is plain JSON and is written atomically every time you press **Save & Apply Schedule** (write to a temporary file, then replace). Times must use `HH:MM` format in the file; the UI accepts flexible input such as `8:0`. You can edit the file by hand if needed — the application validates it on load and falls back to defaults if something is wrong.
 
+The interface supports English and Turkish. Select the language from the application window;
+the preference is saved as the `language` field in the same configuration file.
+
 ## Logs
 
 Application logs are written to:
